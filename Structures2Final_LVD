@@ -1,0 +1,91 @@
+%Andrew Farmer, Jack Lasinski, Taiyo Tougas, Will Cathcart
+%Trunk Fairing Hand Calculations
+clc, clear all
+format longg
+R = 2; % meters
+NS = 13; %Number of Stiffners used around circumference of fairing enter 1 more than you actually want as origin repeats
+theD = (360/NS);
+theR = theD*(pi/180);
+Asec = (1/2)*theR*2^2;
+theVals = linspace(0,360,NS);
+for i =1:NS-1
+    the = theVals(i);
+    x(1,i) = R*cosd(the);% m
+    y(1,i) = R*sind(the);% m
+    Askin = R*(theR)*.002; %Assuming skin thickness of 2 mm
+    A(1,i) = .001+ Askin; %m^2 Assuming each stiffener has the same area
+end
+disp(A')
+disp('Coordinate locations')
+Pos = [x',y'];%Now have x and y position of each stiffener
+Position = table(x',y');
+Position.Properties.VariableNames = ["X","Y"];
+disp(Position)
+comb = x .* A;
+comb2 = y .* A;
+properties = [x' y' A'];
+yg = sum(comb2)/sum(A);
+xg  = sum(comb)/sum(A);
+xg = 0; %value is so small
+Iy = sum(A .*((x - xg).^2));
+Ix = sum(A .*((y - yg).^2));
+combined = (y-yg).*(x-xg);
+Iyx = dot(A,combined);
+Iyx =0; %This value is approximately zero so its simplifies calculations to set it to zero here
+%%Calculating Stresses, FL Grads, and Shear Forces
+F = 1292953.2 + 31366.419*2*pi*R; %3.6e7 - 1795086*9.81 force balance of thrust and weight
+inc = 20; %Assuming inclination angle of 45 
+h = 3.6; %fairing height in meters
+Mz = (h*F*cos(inc))/NS-1;
+Mx = 0; % Moment cancels due equal side loading during turn
+stress = zeros(length(A),1);
+FLGrad = zeros(length(A),1);
+Vy = (F*sind(inc))/(NS-1);
+Vx = (F*cosd(inc))/(NS-1);
+sigCY = 4.61949e8; % Yield Stress
+for i = 1:length(y)
+    stress(i,1) = abs(((1)/(Iy*Ix-Iyx^2))*(-(Mz*Iy+Mx*Iyx)*(y(i)-yg)+(Mx*Ix+Mz*Iyx)*(x(i)-xg)));
+    FLGrad(i,1) = ((1)/(Iy*Ix-Iyx^2))*((Iy*Vy-Iyx*Vx)*(y(i)-yg)+(Ix*Vx+Iyx*Vy)*(x(i)-xg))*A(i);
+    MS(i,1) = (sigCY-abs(stress(i)))/abs(stress(i));
+end
+disp(stress)
+% Should expect large variations of MS due to unequal loading during
+% gravity turn
+for i =1:length(A)
+    ShearForce(i,1) = stress(i,1)*A(1,i);
+end
+MOS = table(MS);
+MOS.Properties.VariableNames = ["Comp_MS",];
+disp(MOS)
+
+minMS = min(MS); %Should aim for around around 15 for min MS axially 
+maxMS = max(MS);
+fprintf('The minimum Margin of Safety is %f \n',minMS)
+fprintf('\n')
+%%Calculating Rib Spacing 
+nofree = false; %One-side Free condition
+alpha = .8;
+n = .6;
+if nofree == true
+    C =4;
+else
+    C = .425;
+end
+V = .3;
+E = 10.5e6;
+p = 1;
+for i = 1:length(A)-1
+    sigREQ = stress(i,1);
+        t1 = .0316227; %m
+        b1 = .0316227; %m 
+        lam = sqrt(((sigCY)/(E)))*(b1/t1); %just using 
+        Sigmacc = (alpha*((pi^2*C)/(12*(1-V^2)))^(1-n) * lam^(-.8))*sigCY;
+        MSCRIP(1,p) = (abs(Sigmacc)/abs(sigREQ*1.5)) - 1; %calculate MS using FOS of 1.5
+        p = p +1;
+end
+MOSCRIP = table(MSCRIP');
+MOSCRIP.Properties.VariableNames = ["Crippling_MS",];
+disp(MOSCRIP)
+disp('All Calculated MS are greater than zero indicating that extra rib panels are not needed to combat buckling stresses')
+fprintf('Though these panels are not needed for buckling they help add more support to the strucuture so a rib will be added at half the \n length of the fairing to help support against the undetermined hoop stresses the pressurized vessle will feel\n')
+
